@@ -1,0 +1,1246 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, viewport-fit=cover" />
+  <title>Routine — One Task</title>
+
+  <!--
+  =========================
+  TASK CONFIGURATION (EDIT THIS)
+  =========================
+  Global:
+    dayStart=HH:MM                      (24h, default 05:00 if omitted)
+
+  Tasks (pipe separated):
+    Category | Task name | Sub-title | Recurring | Block | Time | freshStartDelay=NDAYS
+
+  Notes:
+  - Task name supports <b>...</b> only (everything else is stripped).
+  - Recurring examples:
+      2d   = every 2 days
+      2.5d = every 2 or 3 days (randomized each completion)
+      6.5w = every 6 or 7 weeks (randomized each completion)
+      3m   = every 3 months
+      4y   = every 4 years
+  - Block (optional): none / weekdays / weekend
+      weekdays = never trigger Mon–Fri (only Sat/Sun)
+      weekend  = never trigger Sat/Sun (only Mon–Fri)
+  - Time (optional, HH:MM): makes it a timed task.
+      Timed tasks become pending only after that time has passed (and recurring + block allow it).
+      When they become pending they move to the top and steal focus once for that occurrence.
+      Display name is automatically prefixed like: "18:00 Cook eggs"
+  - freshStartDelay (optional, integer days):
+      freshStartDelay=0  => pending immediately on fresh start (default if omitted)
+      freshStartDelay=4  => first becomes due 4 routine-days after fresh start (at dayStart boundary)
+      Applies to timed tasks too (it delays the first due routine-day that the time trigger belongs to).
+  -->
+  <script id="routine-config" type="text/plain">
+dayStart=05:00
+
+# Category | Task name | Sub-title | Recurring | Block | Time | freshStartDelay=NDAYS
+Health | Drink <b>500ml wa</b>ter | Before coffee | 1d
+Health | Take <b>vitamin D</b> | With breakfast | 2.5d
+Mind | 20 minutes deep reading | No notifications | 2d
+Home | Vacuum <b>living room</b> | Quick pass | 6.5d | weekdays
+Admin | Pay / review credit card | Check balances & fraud | 1m
+
+# Timed tasks
+Food | Cook <b>eggs</b> | Dinner | 1d | 18:00
+Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay=2
+  </script>
+
+  <style>
+    :root{
+      --bg: #0b0d12;
+      --text: #eef1ff;
+      --muted: rgba(238,241,255,.70);
+      --muted2: rgba(238,241,255,.52);
+      --border: rgba(238,241,255,.10);
+      --shadow: 0 14px 40px rgba(0,0,0,.45);
+
+      --radius: 22px;
+      --btnRadius: 18px;
+
+      --padX: 18px;
+      --padY: 18px;
+
+      --safeTop: env(safe-area-inset-top, 0px);
+      --safeBottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    html, body {
+      height: 100%;
+      margin: 0;
+      background: radial-gradient(1200px 900px at 20% 0%, rgba(125, 92, 255, .18), transparent 55%),
+                  radial-gradient(900px 800px at 90% 20%, rgba(0, 211, 255, .10), transparent 50%),
+                  var(--bg);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      overflow: hidden;
+    }
+
+    .wrap {
+      height: 100vh;
+      width: 100vw;
+      display: flex;
+      align-items: stretch;
+      justify-content: center;
+      padding-top: calc(var(--safeTop) + 12px);
+      padding-bottom: calc(var(--safeBottom) + 12px);
+      box-sizing: border-box;
+    }
+
+    .app {
+      width: min(520px, calc(100vw - 24px));
+      height: calc(100vh - var(--safeTop) - var(--safeBottom) - 24px);
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+    }
+
+    .card {
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      border-radius: var(--radius);
+      overflow: hidden;
+    }
+
+    .topbar {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: var(--padY) var(--padX);
+      background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.02));
+      border-bottom: 1px solid var(--border);
+      min-height: 64px;
+      box-sizing: border-box;
+      z-index: 5;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255,255,255,.06);
+      border: 1px solid rgba(255,255,255,.10);
+      backdrop-filter: blur(10px);
+      max-width: 78%;
+      box-sizing: border-box;
+    }
+
+    .dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 999px;
+      flex: 0 0 auto;
+      box-shadow: 0 0 0 4px rgba(255,255,255,.05);
+    }
+
+    .cat {
+      font-size: 14px;
+      font-weight: 650;
+      letter-spacing: .2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .status {
+      position: relative;
+      font-size: 12px;
+      color: var(--muted2);
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      text-align: right;
+      user-select: none;
+      padding-left: 10px;
+    }
+
+    .statusBadge {
+      font-size: 11px;
+      color: rgba(238,241,255,.78);
+      padding: 5px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(238,241,255,.10);
+      background: rgba(255,255,255,.05);
+      white-space: nowrap;
+    }
+
+    .iconBtn {
+      width: 34px;
+      height: 34px;
+      border-radius: 12px;
+      border: 1px solid rgba(238,241,255,.12);
+      background: rgba(255,255,255,.06);
+      color: rgba(238,241,255,.92);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 800;
+      line-height: 1;
+      cursor: pointer;
+      touch-action: manipulation;
+      box-shadow: 0 10px 24px rgba(0,0,0,.18);
+      padding: 0;
+    }
+    .iconBtn:active { transform: translateY(1px); }
+
+    .menu {
+      position: absolute;
+      top: calc(100% + 10px);
+      right: 0;
+      width: min(240px, calc(100vw - 48px));
+      border-radius: 16px;
+      border: 1px solid rgba(238,241,255,.12);
+      background: rgba(12, 15, 24, .92);
+      backdrop-filter: blur(14px);
+      box-shadow: 0 18px 44px rgba(0,0,0,.50);
+      overflow: hidden;
+      display: none;
+    }
+
+    .menuItem {
+      all: unset;
+      box-sizing: border-box;
+      width: 100%;
+      display: block;
+      padding: 12px 12px 10px 12px;
+      cursor: pointer;
+      position: relative;
+    }
+    .menuItem:hover { background: rgba(255,255,255,.05); }
+    .menuItem:active { background: rgba(255,255,255,.07); }
+
+    .menuTitle {
+      font-size: 14px;
+      font-weight: 720;
+      color: rgba(238,241,255,.92);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .menuHint {
+      margin-top: 4px;
+      font-size: 12px;
+      color: rgba(238,241,255,.58);
+      line-height: 1.25;
+    }
+
+    .danger .menuTitle { color: rgba(255, 190, 190, .95); }
+    .danger .menuHint { color: rgba(255, 190, 190, .68); }
+
+    .menuItem::after{
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      height: 3px;
+      width: 0%;
+      background: rgba(255, 190, 190, .85);
+    }
+    .menuItem.holding::after{
+      animation: holdfill 1.2s linear forwards;
+    }
+    @keyframes holdfill {
+      from { width: 0%; }
+      to   { width: 100%; }
+    }
+
+    .main {
+      flex: 1 1 auto;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .content {
+      padding: 18px var(--padX) 10px var(--padX);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      box-sizing: border-box;
+      min-height: 0;
+    }
+
+    /* CHANGED: make non-bold noticeably thinner; <b> much heavier */
+    .taskName {
+      font-size: clamp(28px, 4.2vw, 40px);
+      font-weight: 320;
+      letter-spacing: -0.4px;
+      line-height: 1.08;
+      margin: 0;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+    }
+    .taskName b { font-weight: 900; }
+
+    .subTitle {
+      margin: 0;
+      font-size: clamp(14px, 2.2vw, 16px);
+      font-style: italic;
+      color: var(--muted);
+      line-height: 1.35;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      min-height: 0;
+    }
+
+    .meta {
+      padding: 10px var(--padX) 16px var(--padX);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      box-sizing: border-box;
+    }
+
+    .metaRow {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 16px;
+      border: 1px solid rgba(238,241,255,.10);
+      background: rgba(15,19,32,.55);
+    }
+
+    .metaKey {
+      font-size: 12px;
+      color: var(--muted2);
+      letter-spacing: .25px;
+      text-transform: uppercase;
+      white-space: nowrap;
+      user-select: none;
+    }
+
+    .metaVal {
+      font-size: 13px;
+      color: rgba(238,241,255,.90);
+      text-align: right;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      max-width: 70%;
+    }
+
+    .controls {
+      padding: 14px var(--padX) 16px var(--padX);
+      border-top: 1px solid var(--border);
+      background: rgba(0,0,0,.08);
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      box-sizing: border-box;
+    }
+
+    .controls.three { grid-template-columns: 1fr 1fr 1fr; }
+    .controls.one { grid-template-columns: 1fr; }
+
+    button {
+      border: 0;
+      border-radius: var(--btnRadius);
+      padding: 14px 12px;
+      font-size: 16px;
+      font-weight: 720;
+      color: var(--text);
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(238,241,255,.12);
+      box-shadow: 0 10px 24px rgba(0,0,0,.28);
+      cursor: pointer;
+      user-select: none;
+      touch-action: manipulation;
+    }
+
+    button:active { transform: translateY(1px); }
+
+    .btnPrimary {
+      background: linear-gradient(180deg, rgba(130,110,255,.80), rgba(91,70,255,.65));
+      border: 1px solid rgba(180,170,255,.25);
+    }
+
+    .btnSecondary {
+      background: linear-gradient(180deg, rgba(255,255,255,.09), rgba(255,255,255,.05));
+    }
+
+    .btnTertiary {
+      background: rgba(255,255,255,.06);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="app card" id="app">
+      <div class="topbar" id="topbar">
+        <div class="pill">
+          <span class="dot" id="catDot"></span>
+          <span class="cat" id="catName">—</span>
+        </div>
+
+        <div class="status" id="statusArea">
+          <span class="statusBadge" id="statusBadge">—</span>
+          <button class="iconBtn" id="menuBtn" aria-label="Menu" title="Menu">▾</button>
+
+          <div class="menu" id="menu" role="menu" aria-hidden="true">
+            <button class="menuItem danger" id="resetItem" role="menuitem">
+              <div class="menuTitle">
+                <span>Reset data</span>
+                <span style="opacity:.7; font-weight:800;">⟲</span>
+              </div>
+              <div class="menuHint" id="resetHint">Press & hold to confirm (1.2s)</div>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="main" id="mainArea">
+        <div class="content">
+          <h1 class="taskName" id="taskName">—</h1>
+          <p class="subTitle" id="subTitle">—</p>
+        </div>
+
+        <div class="meta" id="metaArea">
+          <div class="metaRow">
+            <div class="metaKey">Recurring</div>
+            <div class="metaVal" id="recurringLine">—</div>
+          </div>
+          <div class="metaRow" id="blockRow" style="display:none;">
+            <div class="metaKey">Block</div>
+            <div class="metaVal" id="blockLine">—</div>
+          </div>
+        </div>
+
+        <div class="controls" id="controls">
+          <button class="btnPrimary" id="btnComplete">Complete</button>
+          <button class="btnSecondary" id="btnSkip">Skip</button>
+          <button class="btnTertiary" id="btnFirst" style="display:none;">First</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const STORAGE_KEY = "routine_one_task_v1";
+
+      function readConfigText() {
+        const el = document.getElementById("routine-config");
+        return (el && el.textContent) ? el.textContent : "";
+      }
+
+      function isTimeToken(s) {
+        return /^([0-2]\d):([0-5]\d)$/.test(String(s || "").trim());
+      }
+
+      function isBlockToken(s) {
+        const v = String(s || "").trim().toLowerCase();
+        return v === "none" || v === "weekdays" || v === "weekend";
+      }
+
+      function parseFreshStartDelayToken(s) {
+        const m = String(s || "").trim().match(/^freshStartDelay\s*=\s*(\d+)\s*$/i);
+        if (!m) return null;
+        const n = parseInt(m[1], 10);
+        if (!Number.isFinite(n) || n < 0) return null;
+        return n;
+      }
+
+      function parseConfig(text) {
+        const lines = text.split(/\r?\n/).map(l => l.trim());
+        let dayStart = "05:00";
+        const tasks = [];
+
+        for (const raw of lines) {
+          if (!raw) continue;
+          if (raw.startsWith("#")) continue;
+
+          const m = raw.match(/^dayStart\s*=\s*([0-2]\d):([0-5]\d)\s*$/i);
+          if (m) {
+            dayStart = `${m[1]}:${m[2]}`;
+            continue;
+          }
+
+          const parts = raw.split("|").map(p => p.trim());
+          if (parts.length < 4) continue;
+
+          const category = parts[0] || "General";
+          const nameHtml = parts[1] || "Untitled";
+          const subtitle = parts[2] || "";
+          const recurring = parts[3] || "1d";
+
+          let block = "none";
+          let time = "";
+          let freshStartDelay = 0;
+
+          for (let i = 4; i < parts.length; i++) {
+            const tok = parts[i];
+            if (!tok) continue;
+
+            const fsd = parseFreshStartDelayToken(tok);
+            if (fsd !== null) { freshStartDelay = fsd; continue; }
+
+            if (!time && isTimeToken(tok)) { time = tok; continue; }
+            if (isBlockToken(tok)) { block = String(tok).toLowerCase().trim(); continue; }
+          }
+
+          tasks.push({
+            category,
+            nameHtml,
+            subtitle,
+            recurring,
+            block,
+            time,
+            freshStartDelay
+          });
+        }
+
+        return { dayStart, tasks };
+      }
+
+      function hashStringToInt(str) {
+        let h = 2166136261;
+        for (let i = 0; i < str.length; i++) {
+          h ^= str.charCodeAt(i);
+          h = Math.imul(h, 16777619);
+        }
+        return h >>> 0;
+      }
+
+      function taskId(task) {
+        const key = `${task.category}||${task.nameHtml}||${task.subtitle}||${task.recurring}||${task.block}||${task.time || ""}||fsd=${task.freshStartDelay || 0}`;
+        return "t_" + hashStringToInt(key).toString(36);
+      }
+
+      function sanitizeBoldOnly(html) {
+        let s = String(html ?? "");
+        s = s.replace(/<\s*\/\s*b\s*>/gi, "[[/b]]");
+        s = s.replace(/<\s*b[^>]*>/gi, "[[b]]");
+        s = s.replace(/<[^>]*>/g, "");
+        s = s.replace(/\[\[b\]\]/g, "<b>");
+        s = s.replace(/\[\[\/b\]\]/g, "</b>");
+        return s;
+      }
+
+      function parseDayStart(dayStart) {
+        const m = String(dayStart || "05:00").match(/^([0-2]\d):([0-5]\d)$/);
+        if (!m) return { h: 5, m: 0 };
+        let h = parseInt(m[1], 10);
+        let mi = parseInt(m[2], 10);
+        if (h > 23) h = 5;
+        if (mi > 59) mi = 0;
+        return { h, m: mi };
+      }
+
+      function parseTimeMinutes(timeStr) {
+        const m = String(timeStr || "").trim().match(/^([0-2]\d):([0-5]\d)$/);
+        if (!m) return null;
+        const hh = parseInt(m[1], 10);
+        const mm = parseInt(m[2], 10);
+        if (hh > 23 || mm > 59) return null;
+        return hh * 60 + mm;
+      }
+
+      function getDayStartMs(ts, dayStartHM) {
+        const d = new Date(ts);
+        const base = new Date(d);
+        base.setHours(dayStartHM.h, dayStartHM.m, 0, 0);
+        if (ts < base.getTime()) base.setDate(base.getDate() - 1);
+        return base.getTime();
+      }
+
+      function dayKeyFromDayStartMs(dayStartMs) {
+        const d = new Date(dayStartMs);
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const da = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${da}`;
+      }
+
+      function triggerMsForRoutineDayStart(dayStartMs, timeMinutes, dayStartHM) {
+        const dayStartMin = dayStartHM.h * 60 + dayStartHM.m;
+        const hh = Math.floor(timeMinutes / 60);
+        const mm = timeMinutes % 60;
+
+        const ds = new Date(dayStartMs);
+        const t = new Date(ds.getFullYear(), ds.getMonth(), ds.getDate(), hh, mm, 0, 0);
+        if (timeMinutes < dayStartMin) t.setDate(t.getDate() + 1);
+        return t.getTime();
+      }
+
+      function parseRecurring(recStr) {
+        const s = String(recStr || "").trim().toLowerCase();
+        const m = s.match(/^(\d+(?:\.\d+)?)\s*([dwmy])$/);
+        if (!m) return { value: 1, unit: "d", raw: s || "1d" };
+        return { value: parseFloat(m[1]), unit: m[2], raw: s };
+      }
+
+      function randomizeHalfStep(value) {
+        const frac = Math.abs(value - Math.floor(value));
+        if (Math.abs(frac - 0.5) < 1e-9) {
+          const lo = Math.floor(value);
+          const hi = Math.ceil(value);
+          return (Math.random() < 0.5) ? lo : hi;
+        }
+        return value;
+      }
+
+      function clampDayOfMonth(dateObj, year, monthIndex, day) {
+        const maxDay = new Date(year, monthIndex + 1, 0).getDate();
+        return Math.min(day, maxDay);
+      }
+
+      function addMonthsKeepingDOM(baseMs, months) {
+        const d = new Date(baseMs);
+        const day = d.getDate();
+        const hh = d.getHours(), mm = d.getMinutes(), ss = d.getSeconds(), ms = d.getMilliseconds();
+
+        const m0 = d.getMonth();
+        const targetMonth = m0 + months;
+
+        const temp = new Date(d);
+        temp.setDate(1);
+        temp.setMonth(targetMonth);
+
+        const y = temp.getFullYear();
+        const m = temp.getMonth();
+        const newDay = clampDayOfMonth(temp, y, m, day);
+
+        const out = new Date(y, m, newDay, hh, mm, ss, ms);
+        return out.getTime();
+      }
+
+      function addYearsKeepingDOM(baseMs, years) {
+        const d = new Date(baseMs);
+        const day = d.getDate();
+        const month = d.getMonth();
+        const hh = d.getHours(), mm = d.getMinutes(), ss = d.getSeconds(), ms = d.getMilliseconds();
+
+        const y = d.getFullYear() + years;
+        const newDay = clampDayOfMonth(d, y, month, day);
+        const out = new Date(y, month, newDay, hh, mm, ss, ms);
+        return out.getTime();
+      }
+
+      function isBlockedDay(dateObj, block) {
+        const dow = dateObj.getDay();
+        if (block === "weekdays") return dow >= 1 && dow <= 5;
+        if (block === "weekend") return dow === 0 || dow === 6;
+        return false;
+      }
+
+      function shiftForwardToAllowedDayStart(dueMsAlignedToDayStart, block) {
+        if (block === "none") return dueMsAlignedToDayStart;
+        let ms = dueMsAlignedToDayStart;
+        for (let i = 0; i < 14; i++) {
+          const d = new Date(ms);
+          if (!isBlockedDay(d, block)) return ms;
+          const nd = new Date(ms);
+          nd.setDate(nd.getDate() + 1);
+          ms = nd.getTime();
+        }
+        return dueMsAlignedToDayStart;
+      }
+
+      function computeNextDueMs(completedAtMs, dayStartHM, recurring) {
+        const completedDayStart = getDayStartMs(completedAtMs, dayStartHM);
+        const { value, unit } = recurring;
+
+        let chosen = randomizeHalfStep(value);
+
+        if ((unit === "m" || unit === "y") && chosen % 1 !== 0) {
+          const approxDays = (unit === "m") ? (chosen * 30.4375) : (chosen * 365.25);
+          return completedDayStart + Math.round(approxDays * 86400000);
+        }
+
+        if (unit === "d") return completedDayStart + Math.round(chosen * 86400000);
+        if (unit === "w") return completedDayStart + Math.round(chosen * 7 * 86400000);
+        if (unit === "m") return addMonthsKeepingDOM(completedDayStart, Math.round(chosen));
+        if (unit === "y") return addYearsKeepingDOM(completedDayStart, Math.round(chosen));
+        return completedDayStart + 86400000;
+      }
+
+      function daysAgoText(lastCompletedMs, nowMs, dayStartHM) {
+        if (!lastCompletedMs) return "never";
+        const nowDayStart = getDayStartMs(nowMs, dayStartHM);
+        const lastDayStart = getDayStartMs(lastCompletedMs, dayStartHM);
+        const diffDays = Math.max(0, Math.round((nowDayStart - lastDayStart) / 86400000));
+        return `${diffDays}d ago`;
+      }
+
+      function loadState() {
+        try {
+          const raw = localStorage.getItem(STORAGE_KEY);
+          if (!raw) return { byId: {}, activeId: null, freshStartBaseMs: 0 };
+          const parsed = JSON.parse(raw);
+          if (!parsed || typeof parsed !== "object") return { byId: {}, activeId: null, freshStartBaseMs: 0 };
+          if (!parsed.byId || typeof parsed.byId !== "object") parsed.byId = {};
+          if (typeof parsed.freshStartBaseMs !== "number") parsed.freshStartBaseMs = 0;
+          return parsed;
+        } catch {
+          return { byId: {}, activeId: null, freshStartBaseMs: 0 };
+        }
+      }
+
+      function saveState(state) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      }
+
+      const catDot = document.getElementById("catDot");
+      const catName = document.getElementById("catName");
+      const statusBadge = document.getElementById("statusBadge");
+      const taskName = document.getElementById("taskName");
+      const subTitle = document.getElementById("subTitle");
+      const recurringLine = document.getElementById("recurringLine");
+      const blockRow = document.getElementById("blockRow");
+      const blockLine = document.getElementById("blockLine");
+      const controls = document.getElementById("controls");
+      const btnComplete = document.getElementById("btnComplete");
+      const btnSkip = document.getElementById("btnSkip");
+      const btnFirst = document.getElementById("btnFirst");
+      const metaArea = document.getElementById("metaArea");
+
+      const menuBtn = document.getElementById("menuBtn");
+      const menu = document.getElementById("menu");
+      const resetItem = document.getElementById("resetItem");
+      const resetHint = document.getElementById("resetHint");
+
+      const cfg = parseConfig(readConfigText());
+      const dayStartHM = parseDayStart(cfg.dayStart);
+
+      const tasks = cfg.tasks.map((t, idx) => {
+        const id = taskId(t);
+        const timeMinutes = t.time ? parseTimeMinutes(t.time) : null;
+        const isTimed = !!(t.time && timeMinutes !== null);
+        return {
+          ...t,
+          id,
+          order: idx,
+          recurringParsed: parseRecurring(t.recurring),
+          isTimed,
+          timeMinutes,
+          freshStartDelay: Number.isFinite(t.freshStartDelay) ? t.freshStartDelay : 0
+        };
+      });
+
+      const displayAll = [...tasks].sort((a, b) => {
+        if (a.isTimed !== b.isTimed) return a.isTimed ? -1 : 1;
+        return a.order - b.order;
+      });
+      const displayIndexById = Object.fromEntries(displayAll.map((t, i) => [t.id, i]));
+
+      const state = loadState();
+
+      function normalizeHue(h) {
+        let x = h % 360;
+        if (x < 0) x += 360;
+        return x;
+      }
+
+      function hueDistance(a, b) {
+        const d = Math.abs(a - b) % 360;
+        return Math.min(d, 360 - d);
+      }
+
+      function buildCategoryHueMap() {
+        const seq = [];
+        const seen = new Set();
+        for (const t of displayAll) {
+          if (!seen.has(t.category)) {
+            seen.add(t.category);
+            seq.push(t.category);
+          }
+        }
+
+        const GOLDEN = 137.50776405003785;
+        const MIN_ADJ = 70;
+        const MIN_GLOBAL = 28;
+
+        const map = {};
+        const used = [];
+
+        for (let i = 0; i < seq.length; i++) {
+          const cat = seq[i];
+          let h = normalizeHue((hashStringToInt(cat) % 360) + (i * GOLDEN));
+          let tries = 0;
+
+          while (tries < 120) {
+            const prevHue = (i > 0) ? map[seq[i - 1]] : null;
+            const okPrev = (prevHue === null) || (hueDistance(h, prevHue) >= MIN_ADJ);
+            const okGlobal = used.every(u => hueDistance(h, u) >= MIN_GLOBAL);
+            if (okPrev && okGlobal) break;
+            h = normalizeHue(h + GOLDEN);
+            tries++;
+          }
+
+          if (i > 0 && hueDistance(h, map[seq[i - 1]]) < MIN_ADJ) {
+            h = normalizeHue(map[seq[i - 1]] + 180);
+          }
+
+          while (used.some(u => hueDistance(h, u) < 0.0001)) {
+            h = normalizeHue(h + GOLDEN);
+          }
+
+          map[cat] = h;
+          used.push(h);
+        }
+
+        return map;
+      }
+
+      const categoryHueMap = buildCategoryHueMap();
+
+      function categoryColor(category) {
+        const h = (categoryHueMap[category] ?? (hashStringToInt(category) % 360));
+        return {
+          dot: `hsl(${h} 95% 62%)`,
+          pill: `hsl(${h} 92% 56% / .26)`,
+          pillBorder: `hsl(${h} 92% 60% / .34)`
+        };
+      }
+
+      function ensureTaskState(id) {
+        if (!state.byId[id]) state.byId[id] = {};
+        const s = state.byId[id];
+        if (typeof s.lastCompletedMs !== "number") s.lastCompletedMs = 0;
+        if (typeof s.nextDueMs !== "number") s.nextDueMs = 0;
+        if (typeof s.skippedDayKey !== "string") s.skippedDayKey = "";
+        if (typeof s.lastTimedStealKey !== "string") s.lastTimedStealKey = "";
+        return s;
+      }
+
+      function todayKey(nowMs) {
+        const ds = getDayStartMs(nowMs, dayStartHM);
+        return dayKeyFromDayStartMs(ds);
+      }
+
+      function effectiveDueDayStartMs(task, taskState) {
+        let due = taskState.nextDueMs;
+        if (!due) due = getDayStartMs(Date.now(), dayStartHM);
+        const aligned = getDayStartMs(due + 1000, dayStartHM);
+        return shiftForwardToAllowedDayStart(aligned, task.block);
+      }
+
+      function isPending(task, taskState, nowMs) {
+        const dueDayStart = effectiveDueDayStartMs(task, taskState);
+
+        if (!task.isTimed) return nowMs >= dueDayStart;
+
+        const triggerMs = triggerMsForRoutineDayStart(dueDayStart, task.timeMinutes, dayStartHM);
+        if (task.block !== "none" && isBlockedDay(new Date(triggerMs), task.block)) return false;
+
+        return nowMs >= triggerMs;
+      }
+
+      function pendingTasksUnordered(nowMs) {
+        const out = [];
+        for (const t of tasks) {
+          const ts = ensureTaskState(t.id);
+          if (isPending(t, ts, nowMs)) out.push(t);
+        }
+        return out;
+      }
+
+      function pendingTasksOrdered(nowMs) {
+        const pend = pendingTasksUnordered(nowMs);
+        const timed = pend.filter(t => t.isTimed).sort((a, b) => a.order - b.order);
+        const regular = pend.filter(t => !t.isTimed).sort((a, b) => a.order - b.order);
+        return timed.concat(regular);
+      }
+
+      function firstPendingTask(nowMs) {
+        const pend = pendingTasksOrdered(nowMs);
+        return pend.length ? pend[0] : null;
+      }
+
+      function hasPriorPendingInDisplayOrder(currentTask, nowMs) {
+        if (!currentTask) return false;
+        const pend = pendingTasksOrdered(nowMs);
+        const idx = pend.findIndex(t => t.id === currentTask.id);
+        return idx > 0;
+      }
+
+      function applyTimedFocusSteal(nowMs) {
+        for (const t of tasks) {
+          if (!t.isTimed) continue;
+
+          const ts = ensureTaskState(t.id);
+          if (!isPending(t, ts, nowMs)) continue;
+
+          const dueDayStart = effectiveDueDayStartMs(t, ts);
+          const occKey = dayKeyFromDayStartMs(dueDayStart);
+
+          if (ts.lastTimedStealKey !== occKey) {
+            ts.lastTimedStealKey = occKey;
+            state.activeId = t.id;
+            saveState(state);
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function pickActiveTask(nowMs) {
+        const pend = pendingTasksOrdered(nowMs);
+        if (!pend.length) return null;
+
+        if (state.activeId) {
+          const t = tasks.find(x => x.id === state.activeId);
+          if (t) {
+            const ts = ensureTaskState(t.id);
+            if (isPending(t, ts, nowMs)) return t;
+          }
+        }
+
+        const tk = todayKey(nowMs);
+        for (const t of pend) {
+          const ts = ensureTaskState(t.id);
+          if (ts.skippedDayKey !== tk) return t;
+        }
+
+        return null;
+      }
+
+      function renderStatusState(nowMs, kind) {
+        const pendCount = pendingTasksUnordered(nowMs).length;
+        statusBadge.textContent = `${pendCount} pending`;
+
+        catName.textContent = "—";
+        catDot.style.background = "rgba(255,255,255,.35)";
+        const pill = catDot.parentElement;
+        if (pill && pill.classList.contains("pill")) {
+          pill.style.background = "rgba(255,255,255,.06)";
+          pill.style.borderColor = "rgba(255,255,255,.10)";
+        }
+
+        metaArea.style.display = "none";
+        blockRow.style.display = "none";
+
+        btnComplete.style.display = "none";
+        btnSkip.style.display = "none";
+
+        if (kind === "all_done") {
+          taskName.textContent = "All caught up";
+          subTitle.style.display = "block";
+          subTitle.textContent = "No pending tasks right now.";
+          btnFirst.style.display = "none";
+          controls.classList.remove("three");
+          controls.classList.add("one");
+        } else {
+          const tk = todayKey(nowMs);
+          const pend = pendingTasksOrdered(nowMs);
+          const skippedCount = pend.filter(t => ensureTaskState(t.id).skippedDayKey === tk).length;
+
+          taskName.textContent = "Done for now";
+          subTitle.style.display = "block";
+          subTitle.textContent = `You skipped ${skippedCount} task${skippedCount === 1 ? "" : "s"} today. Press First to revisit.`;
+
+          btnFirst.style.display = "block";
+          controls.classList.remove("three");
+          controls.classList.add("one");
+        }
+      }
+
+      function renderTask(task, nowMs) {
+        metaArea.style.display = "flex";
+
+        const ts = ensureTaskState(task.id);
+        const catCol = categoryColor(task.category);
+
+        catName.textContent = task.category;
+        catDot.style.background = catCol.dot;
+        const pill = catDot.parentElement;
+        if (pill && pill.classList.contains("pill")) {
+          pill.style.background = catCol.pill;
+          pill.style.borderColor = catCol.pillBorder;
+        }
+
+        const pendCount = pendingTasksUnordered(nowMs).length;
+        statusBadge.textContent = `${pendCount} pending`;
+
+        const nameHtml = sanitizeBoldOnly(task.nameHtml);
+        taskName.innerHTML = task.isTimed && task.time ? `${task.time} ${nameHtml}` : nameHtml;
+
+        if (task.subtitle) {
+          subTitle.style.display = "block";
+          subTitle.textContent = task.subtitle;
+        } else {
+          subTitle.style.display = "none";
+          subTitle.textContent = "";
+        }
+
+        const ago = daysAgoText(ts.lastCompletedMs, nowMs, dayStartHM);
+        recurringLine.textContent = `${task.recurring} (last completed ${ago})`;
+
+        if (task.block && task.block !== "none") {
+          blockRow.style.display = "flex";
+          blockLine.textContent = (task.block === "weekdays") ? "blocked on weekdays" : "blocked on weekend";
+        } else {
+          blockRow.style.display = "none";
+        }
+
+        const showFirst = hasPriorPendingInDisplayOrder(task, nowMs);
+        const orderedCount = pendingTasksOrdered(nowMs).length;
+        const showSkip = orderedCount > 1;
+
+        btnComplete.style.display = "block";
+        btnSkip.style.display = showSkip ? "block" : "none";
+        btnFirst.style.display = showFirst ? "block" : "none";
+
+        controls.classList.toggle("three", showFirst);
+        controls.classList.toggle("one", (!showFirst && !showSkip));
+      }
+
+      let openDayKey = todayKey(Date.now());
+
+      function handleRoutineDayRollover(nowMs) {
+        const tk = todayKey(nowMs);
+        if (tk === openDayKey) return false;
+
+        openDayKey = tk;
+
+        for (const t of tasks) {
+          const ts = ensureTaskState(t.id);
+          if (ts.skippedDayKey && ts.skippedDayKey !== tk) ts.skippedDayKey = "";
+        }
+
+        const first = firstPendingTask(nowMs);
+        state.activeId = first ? first.id : null;
+        saveState(state);
+
+        return true;
+      }
+
+      function rerender() {
+        const nowMs = Date.now();
+
+        handleRoutineDayRollover(nowMs);
+        applyTimedFocusSteal(nowMs);
+
+        const active = pickActiveTask(nowMs);
+
+        if (!active) {
+          const pendCount = pendingTasksUnordered(nowMs).length;
+          if (pendCount === 0) {
+            renderStatusState(nowMs, "all_done");
+          } else {
+            renderStatusState(nowMs, "done_for_now");
+          }
+          return;
+        }
+
+        renderTask(active, nowMs);
+      }
+
+      function scanNextPendingAfter(currentId, nowMs, options) {
+        const includeSkipped = !!(options && options.includeSkipped);
+        const tk = todayKey(nowMs);
+        const startIdx = (displayIndexById[currentId] ?? -1);
+        if (startIdx < 0) return null;
+
+        for (let step = 1; step <= displayAll.length; step++) {
+          const cand = displayAll[(startIdx + step) % displayAll.length];
+          const cs = ensureTaskState(cand.id);
+          if (!isPending(cand, cs, nowMs)) continue;
+
+          if (includeSkipped) return cand.id;
+          if (cs.skippedDayKey !== tk) return cand.id;
+        }
+        return null;
+      }
+
+      function completeActive() {
+        const nowMs = Date.now();
+        const t = pickActiveTask(nowMs);
+        if (!t) return;
+
+        const tk = todayKey(nowMs);
+        const ts = ensureTaskState(t.id);
+        const wasSkipped = (ts.skippedDayKey === tk);
+
+        ts.lastCompletedMs = nowMs;
+
+        const rec = t.recurringParsed;
+        let next = computeNextDueMs(nowMs, dayStartHM, rec);
+        next = getDayStartMs(next + 1000, dayStartHM);
+        next = shiftForwardToAllowedDayStart(next, t.block);
+        ts.nextDueMs = next;
+
+        ts.skippedDayKey = "";
+
+        saveState(state);
+
+        const now2 = Date.now();
+        const nextId = scanNextPendingAfter(t.id, now2, { includeSkipped: wasSkipped });
+
+        state.activeId = nextId || null;
+        saveState(state);
+
+        rerender();
+      }
+
+      function skipActive() {
+        const nowMs = Date.now();
+        const t = pickActiveTask(nowMs);
+        if (!t) return;
+
+        const pendCount = pendingTasksOrdered(nowMs).length;
+        if (pendCount <= 1) return;
+
+        const tk = todayKey(nowMs);
+        const ts = ensureTaskState(t.id);
+        ts.skippedDayKey = tk;
+
+        saveState(state);
+
+        const now2 = Date.now();
+        const nextId = scanNextPendingAfter(t.id, now2, { includeSkipped: false });
+
+        state.activeId = nextId || null;
+        saveState(state);
+
+        rerender();
+      }
+
+      function firstPending() {
+        const nowMs = Date.now();
+        const first = firstPendingTask(nowMs);
+        if (!first) {
+          state.activeId = null;
+          saveState(state);
+          rerender();
+          return;
+        }
+        state.activeId = first.id;
+        saveState(state);
+        rerender();
+      }
+
+      let menuOpen = false;
+
+      function openMenu() {
+        menu.style.display = "block";
+        menu.setAttribute("aria-hidden", "false");
+        menuOpen = true;
+      }
+
+      function closeMenu() {
+        menu.style.display = "none";
+        menu.setAttribute("aria-hidden", "true");
+        menuOpen = false;
+        resetItem.classList.remove("holding");
+        resetHint.textContent = "Press & hold to confirm (1.2s)";
+      }
+
+      menuBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        menuOpen ? closeMenu() : openMenu();
+      });
+
+      window.addEventListener("pointerdown", (e) => {
+        if (!menuOpen) return;
+        if (menu.contains(e.target) || menuBtn.contains(e.target)) return;
+        closeMenu();
+      });
+
+      function resetDataNow() {
+        closeMenu();
+        localStorage.removeItem(STORAGE_KEY);
+        location.reload();
+      }
+
+      let holdTimer = null;
+      let holdFired = false;
+
+      function cancelHold() {
+        if (holdTimer) clearTimeout(holdTimer);
+        holdTimer = null;
+        holdFired = false;
+        resetItem.classList.remove("holding");
+        resetHint.textContent = "Press & hold to confirm (1.2s)";
+      }
+
+      resetItem.addEventListener("pointerdown", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!menuOpen) openMenu();
+
+        holdFired = false;
+        resetItem.classList.add("holding");
+        resetHint.textContent = "Keep holding…";
+
+        if (holdTimer) clearTimeout(holdTimer);
+        holdTimer = setTimeout(() => {
+          holdFired = true;
+          resetHint.textContent = "Resetting…";
+          resetDataNow();
+        }, 1200);
+      });
+
+      resetItem.addEventListener("pointerup", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!holdFired) cancelHold();
+      });
+
+      resetItem.addEventListener("pointerleave", () => {
+        if (!holdFired) cancelHold();
+      });
+
+      resetItem.addEventListener("pointercancel", () => {
+        if (!holdFired) cancelHold();
+      });
+
+      btnComplete.addEventListener("click", completeActive);
+      btnSkip.addEventListener("click", skipActive);
+      btnFirst.addEventListener("click", firstPending);
+
+      (function initDefaults() {
+        const nowMs = Date.now();
+
+        if (!state.freshStartBaseMs || typeof state.freshStartBaseMs !== "number" || state.freshStartBaseMs <= 0) {
+          state.freshStartBaseMs = getDayStartMs(nowMs, dayStartHM);
+        }
+
+        for (const t of tasks) {
+          const ts = ensureTaskState(t.id);
+          if (!ts.nextDueMs && !ts.lastCompletedMs) {
+            const delayDays = Number.isFinite(t.freshStartDelay) ? Math.max(0, Math.floor(t.freshStartDelay)) : 0;
+            let due = state.freshStartBaseMs + (delayDays * 86400000);
+            due = getDayStartMs(due + 1000, dayStartHM);
+            due = shiftForwardToAllowedDayStart(due, t.block);
+            ts.nextDueMs = due;
+          }
+        }
+
+        saveState(state);
+      })();
+
+      (function clearExpiredSkipsOnLoad() {
+        const nowMs = Date.now();
+        const tk = todayKey(nowMs);
+        for (const t of tasks) {
+          const ts = ensureTaskState(t.id);
+          if (ts.skippedDayKey && ts.skippedDayKey !== tk) ts.skippedDayKey = "";
+        }
+        saveState(state);
+      })();
+
+      rerender();
+      setInterval(rerender, 10 * 1000);
+    })();
+  </script>
+</body>
+</html>
