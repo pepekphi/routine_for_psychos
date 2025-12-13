@@ -39,11 +39,11 @@
 dayStart=05:00
 
 # Category | Task name | Sub-title | Recurring | Block | Time | freshStartDelay=NDAYS
-Health | Drink <b>500ml wa</b>ter | Before coffee | 1d
-Health | Take <b>vitamin D</b> | With breakfast | 2.5d
-Mind | 20 minutes deep reading | No notifications | 2d
-Home | Vacuum <b>living room</b> | Quick pass | 6.5d | weekdays
-Admin | Pay / review credit card | Check balances & fraud | 1m
+Health | Drink 500ml water | Before coffee | 1d
+Health | Take <b>vitamin D</b> | With breakfast | 2.5d | freshStartDelay=1
+Mind | 20 minutes deep reading | No notifications | 2d | weekend | freshStartDelay=3
+Home | Vacuum <b>living room</b> | Quick pass | 6.5d | weekdays | freshStartDelay=2
+Admin | Pay / review credit card | Check balances & fraud | 1m | freshStartDelay=7
 
 # Timed tasks
 Food | Cook <b>eggs</b> | Dinner | 1d | 18:00
@@ -67,6 +67,9 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
 
       --safeTop: env(safe-area-inset-top, 0px);
       --safeBottom: env(safe-area-inset-bottom, 0px);
+
+      /* CHANGED: use real visible viewport height on mobile via JS */
+      --vvh: 100vh;
     }
 
     html, body {
@@ -81,7 +84,8 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
     }
 
     .wrap {
-      height: 100vh;
+      /* CHANGED: was 100vh; on mobile Safari that can exceed visible area */
+      height: var(--vvh);
       width: 100vw;
       display: flex;
       align-items: stretch;
@@ -93,7 +97,8 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
 
     .app {
       width: min(520px, calc(100vw - 24px));
-      height: calc(100vh - var(--safeTop) - var(--safeBottom) - 24px);
+      /* CHANGED: was calc(100vh - ...); now uses visible viewport height */
+      height: calc(var(--vvh) - var(--safeTop) - var(--safeBottom) - 24px);
       display: flex;
       flex-direction: column;
       gap: 14px;
@@ -260,6 +265,7 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
       display: flex;
       flex-direction: column;
       justify-content: space-between;
+      min-height: 0;
     }
 
     .content {
@@ -271,7 +277,6 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
       min-height: 0;
     }
 
-    /* CHANGED: make non-bold noticeably thinner; <b> much heavier */
     .taskName {
       font-size: clamp(28px, 4.2vw, 40px);
       font-weight: 320;
@@ -435,6 +440,19 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
   <script>
     (function () {
       const STORAGE_KEY = "routine_one_task_v1";
+
+      // CHANGED: keep CSS --vvh synced to the real visible viewport (fixes missing bottom buttons on mobile Safari)
+      function setVvh() {
+        const h = (window.visualViewport && window.visualViewport.height) ? window.visualViewport.height : window.innerHeight;
+        document.documentElement.style.setProperty('--vvh', `${Math.round(h)}px`);
+      }
+      setVvh();
+      window.addEventListener('resize', setVvh);
+      window.addEventListener('orientationchange', setVvh);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('resize', setVvh);
+        window.visualViewport.addEventListener('scroll', setVvh);
+      }
 
       function readConfigText() {
         const el = document.getElementById("routine-config");
