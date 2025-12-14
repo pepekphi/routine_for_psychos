@@ -67,13 +67,13 @@
         Home | Vacuum | ... | 6.5d | weekdays
   -->
   <script id="routine-config" type="text/plain">
-dayStart=05:00
+dayStart=06:00
 
 # Category | Task name | Sub-title | Recurring | (optional block tokens...) | Time | freshStartDelay=NDAYS
 Health | Drink 500ml water | Before coffee | 1d
-Health | Take <b>vitamin D</b> | With breakfast | 2.5d | freshStartDelay=1
-Mind | 20 minutes deep reading | No notifications | 2d | weekend | freshStartDelay=3
-Home | Vacuum <b>living room</b> | Quick pass | 6.5d | weekdays | freshStartDelay=2
+Health | Take <b>vitamin D</b> | With breakfast | 1d
+Mind | 20 minutes deep reading | No notifications | 1d | Thursday
+Home | Vacuum <b>living room</b> | Quick pass | 1d | Friday
 Admin | Pay / review credit card | Check balances & fraud | 1m | freshStartDelay=7
 
 # Timed tasks
@@ -563,7 +563,7 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         window.visualViewport.addEventListener('scroll', setVvh);
       }
 
-      // NEW: tiny bleep for timed focus-steal (unlocks on first user gesture to satisfy mobile autoplay rules)
+      // tiny bleep for timed focus-steal (unlocks on first user gesture to satisfy mobile autoplay rules)
       let audioCtx = null;
       let audioUnlocked = false;
 
@@ -1158,14 +1158,6 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         return pend.length ? pend[0] : null;
       }
 
-      function hasPriorPendingInDisplayOrder(currentTask, nowMs) {
-        if (!currentTask) return false;
-        const pend = pendingTasksOrdered(nowMs);
-        const idx = pend.findIndex(t => t.id === currentTask.id);
-        return idx > 0;
-      }
-
-      // Focus-steal grouping + NEW: beep when a steal occurs.
       function applyTimedFocusSteal(nowMs) {
         const candidates = [];
 
@@ -1369,16 +1361,22 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
           blockRow.style.display = "none";
         }
 
-        const showFirst = hasPriorPendingInDisplayOrder(task, nowMs);
-        const orderedCount = pendingTasksOrdered(nowMs).length;
-        const showSkip = orderedCount > 1;
+        // CHANGED: hide Skip if this task is the last in the current pending order (would wrap to first).
+        const pendOrdered = pendingTasksOrdered(nowMs);
+        const orderedCount = pendOrdered.length;
+        const idxInPend = pendOrdered.findIndex(t => t.id === task.id);
+        const isLastInPendingOrder = (idxInPend >= 0 && idxInPend === orderedCount - 1);
+
+        const showFirst = (idxInPend > 0);
+        const showSkip = (orderedCount > 1) && !isLastInPendingOrder;
 
         btnComplete.style.display = "block";
         btnSkip.style.display = showSkip ? "block" : "none";
         btnFirst.style.display = showFirst ? "block" : "none";
 
-        controls.classList.toggle("three", showFirst);
-        controls.classList.toggle("one", (!showFirst && !showSkip));
+        const btnCount = 1 + (showSkip ? 1 : 0) + (showFirst ? 1 : 0);
+        controls.classList.toggle("three", btnCount === 3);
+        controls.classList.toggle("one", btnCount === 1);
       }
 
       let openDayKey = todayKey(Date.now());
@@ -1471,6 +1469,7 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         rerender();
       }
 
+      // Skip behaves as "Next" when you're already revisiting skipped tasks.
       function skipActive() {
         const nowMs = Date.now();
         const t = pickActiveTask(nowMs);
@@ -1481,12 +1480,34 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
 
         const tk = todayKey(nowMs);
         const ts = ensureTaskState(t.id);
-        ts.skippedDayKey = tk;
 
+        const wasAlreadySkipped = (ts.skippedDayKey === tk);
+
+        ts.skippedDayKey = tk;
         saveState(state);
 
         const now2 = Date.now();
-        const nextId = scanNextPendingAfter(t.id, now2, { includeSkipped: false });
+        const tk2 = todayKey(now2);
+
+        let nextId = scanNextPendingAfter(t.id, now2, { includeSkipped: wasAlreadySkipped });
+
+        if (!nextId) {
+          const pend2 = pendingTasksOrdered(now2);
+
+          if (wasAlreadySkipped) {
+            const idx = pend2.findIndex(x => x.id === t.id);
+            if (idx >= 0 && pend2.length > 1) {
+              const alt = pend2[(idx + 1) % pend2.length];
+              if (alt && alt.id !== t.id) nextId = alt.id;
+            } else {
+              const alt = pend2.find(x => x.id !== t.id);
+              if (alt) nextId = alt.id;
+            }
+          } else {
+            const firstUnskipped = pend2.find(x => ensureTaskState(x.id).skippedDayKey !== tk2);
+            if (firstUnskipped) nextId = firstUnskipped.id;
+          }
+        }
 
         state.activeId = nextId || null;
         saveState(state);
