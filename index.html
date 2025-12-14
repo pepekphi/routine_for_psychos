@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1, viewport-fit=cover" />
-  <title>Routine — One Task</title>
+  <title>Routine for Psychos</title>
 
   <!--
   =========================
@@ -13,32 +13,63 @@
     dayStart=HH:MM                      (24h, default 05:00 if omitted)
 
   Tasks (pipe separated):
-    Category | Task name | Sub-title | Recurring | Block | Time | freshStartDelay=NDAYS
+    Category | Task name | Sub-title | Recurring | (optional extra tokens...) | freshStartDelay=NDAYS
 
   Notes:
   - Task name supports <b>...</b> only (everything else is stripped).
   - Recurring examples:
       2d   = every 2 days
-      2.5d = every 2 or 3 days (randomized each completion)
-      6.5w = every 6 or 7 weeks (randomized each completion)
+      2.5d = alternates 2 and 3 days (first time randomized, then flips each completion)
+      6.5w = alternates 6 and 7 weeks (first time randomized, then flips each completion)
       3m   = every 3 months
       4y   = every 4 years
-  - Block (optional): none / weekdays / weekend
-      weekdays = never trigger Mon–Fri (only Sat/Sun)
-      weekend  = never trigger Sat/Sun (only Mon–Fri)
+
+    Decimals:
+      - Only .5 is supported.
+      - Any other decimals (e.g. 2.2d, 3.8w) are treated as .0 (rounded down).
+
   - Time (optional, HH:MM): makes it a timed task.
       Timed tasks become pending only after that time has passed (and recurring + block allow it).
       When they become pending they move to the top and steal focus once for that occurrence.
       Display name is automatically prefixed like: "18:00 Cook eggs"
+
+      Focus-steal grouping:
+        - If multiple timed tasks trigger at EXACTLY the same timestamp, only ONE focus-steal occurs.
+        - The task highest in configuration order among that same-time group steals focus.
+        - The others in that same-time group do NOT steal focus afterward; they remain pending in config order.
+
   - freshStartDelay (optional, integer days):
       freshStartDelay=0  => pending immediately on fresh start (default if omitted)
       freshStartDelay=4  => first becomes due 4 routine-days after fresh start (at dayStart boundary)
       Applies to timed tasks too (it delays the first due routine-day that the time trigger belongs to).
+
+  - Block (optional, flexible, case-insensitive):
+      You can add ZERO or MORE "block tokens" after Recurring.
+      Each token can be its own pipe part OR you can combine multiple tokens in one part
+      separated by commas/spaces.
+
+      Supported tokens:
+        none
+        weekday / weekdays            -> blocks Mon, Tue, Wed, Thu, Fri
+        weekend / weekends            -> blocks Sat, Sun
+
+        sun / sunday / sundays
+        mon / monday / mondays
+        tue / tues / tuesday / tuesdays
+        wed / weds / wednesday / wednesdays
+        thu / thur / thurs / thursday / thursdays
+        fri / friday / fridays
+        sat / saturday / saturdays
+
+      Examples:
+        Mind | Read | ... | 2d | weekends | tuesday | wednesday
+        Mind | Read | ... | 2d | weekend, tue, wed
+        Home | Vacuum | ... | 6.5d | weekdays
   -->
   <script id="routine-config" type="text/plain">
 dayStart=05:00
 
-# Category | Task name | Sub-title | Recurring | Block | Time | freshStartDelay=NDAYS
+# Category | Task name | Sub-title | Recurring | (optional block tokens...) | Time | freshStartDelay=NDAYS
 Health | Drink 500ml water | Before coffee | 1d
 Health | Take <b>vitamin D</b> | With breakfast | 2.5d | freshStartDelay=1
 Mind | 20 minutes deep reading | No notifications | 2d | weekend | freshStartDelay=3
@@ -68,7 +99,6 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
       --safeTop: env(safe-area-inset-top, 0px);
       --safeBottom: env(safe-area-inset-bottom, 0px);
 
-      /* CHANGED: use real visible viewport height on mobile via JS */
       --vvh: 100vh;
     }
 
@@ -84,7 +114,6 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
     }
 
     .wrap {
-      /* CHANGED: was 100vh; on mobile Safari that can exceed visible area */
       height: var(--vvh);
       width: 100vw;
       display: flex;
@@ -97,7 +126,6 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
 
     .app {
       width: min(520px, calc(100vw - 24px));
-      /* CHANGED: was calc(100vh - ...); now uses visible viewport height */
       height: calc(var(--vvh) - var(--safeTop) - var(--safeBottom) - 24px);
       display: flex;
       flex-direction: column;
@@ -132,18 +160,10 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
       padding: 8px 12px;
       border-radius: 999px;
       background: rgba(255,255,255,.06);
-      border: 1px solid rgba(255,255,255,.10);
+      border: 1px solid rgba(238,241,255,.10);
       backdrop-filter: blur(10px);
       max-width: 78%;
       box-sizing: border-box;
-    }
-
-    .dot {
-      width: 10px;
-      height: 10px;
-      border-radius: 999px;
-      flex: 0 0 auto;
-      box-shadow: 0 0 0 4px rgba(255,255,255,.05);
     }
 
     .cat {
@@ -168,12 +188,19 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
     }
 
     .statusBadge {
-      font-size: 11px;
-      color: rgba(238,241,255,.78);
-      padding: 5px 10px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      padding: 0 12px;
       border-radius: 999px;
       border: 1px solid rgba(238,241,255,.10);
-      background: rgba(255,255,255,.05);
+      background: rgba(255,255,255,.06);
+      backdrop-filter: blur(10px);
+      box-sizing: border-box;
+
+      font-size: 13px;
+      font-weight: 650;
+      color: rgba(238,241,255,.86);
       white-space: nowrap;
     }
 
@@ -341,6 +368,17 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
       max-width: 70%;
     }
 
+    .metaVal.tapEnabled{
+      cursor: pointer;
+      user-select: none;
+      text-decoration: underline;
+      text-decoration-style: dotted;
+      text-underline-offset: 3px;
+    }
+    .metaVal.tapEnabled:active{
+      transform: translateY(1px);
+    }
+
     .controls {
       padding: 14px var(--padX) 16px var(--padX);
       border-top: 1px solid var(--border);
@@ -383,6 +421,66 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
     .btnTertiary {
       background: rgba(255,255,255,.06);
     }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: rgba(0,0,0,.50);
+      backdrop-filter: blur(10px);
+      z-index: 80;
+      box-sizing: border-box;
+    }
+
+    .overlayCard {
+      width: min(520px, calc(100vw - 32px));
+      border-radius: 18px;
+      border: 1px solid rgba(238,241,255,.14);
+      background: rgba(12, 15, 24, .92);
+      box-shadow: 0 22px 70px rgba(0,0,0,.65);
+      overflow: hidden;
+    }
+
+    .overlayHeader {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 14px 14px 12px 14px;
+      border-bottom: 1px solid rgba(238,241,255,.10);
+    }
+
+    .overlayTitle {
+      font-size: 14px;
+      font-weight: 740;
+      color: rgba(238,241,255,.92);
+      letter-spacing: .2px;
+    }
+
+    .overlayBody {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .overlayLabel {
+      font-size: 12px;
+      color: rgba(238,241,255,.58);
+      letter-spacing: .25px;
+      text-transform: uppercase;
+    }
+
+    .overlayValue {
+      font-size: 16px;
+      font-weight: 680;
+      color: rgba(238,241,255,.94);
+      line-height: 1.25;
+      word-break: break-word;
+    }
   </style>
 </head>
 
@@ -390,8 +488,7 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
   <div class="wrap">
     <div class="app card" id="app">
       <div class="topbar" id="topbar">
-        <div class="pill">
-          <span class="dot" id="catDot"></span>
+        <div class="pill" id="catPill">
           <span class="cat" id="catName">—</span>
         </div>
 
@@ -437,11 +534,23 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
     </div>
   </div>
 
+  <div class="overlay" id="tsOverlay" role="dialog" aria-modal="true" aria-hidden="true">
+    <div class="overlayCard" role="document">
+      <div class="overlayHeader">
+        <div class="overlayTitle">Last completed</div>
+        <button class="iconBtn" id="tsOverlayClose" aria-label="Close" title="Close">✕</button>
+      </div>
+      <div class="overlayBody">
+        <div class="overlayLabel">Timestamp</div>
+        <div class="overlayValue" id="tsOverlayText">—</div>
+      </div>
+    </div>
+  </div>
+
   <script>
     (function () {
       const STORAGE_KEY = "routine_one_task_v1";
 
-      // CHANGED: keep CSS --vvh synced to the real visible viewport (fixes missing bottom buttons on mobile Safari)
       function setVvh() {
         const h = (window.visualViewport && window.visualViewport.height) ? window.visualViewport.height : window.innerHeight;
         document.documentElement.style.setProperty('--vvh', `${Math.round(h)}px`);
@@ -454,6 +563,64 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         window.visualViewport.addEventListener('scroll', setVvh);
       }
 
+      // NEW: tiny bleep for timed focus-steal (unlocks on first user gesture to satisfy mobile autoplay rules)
+      let audioCtx = null;
+      let audioUnlocked = false;
+
+      const unlockPointerOpts = { capture: true, passive: true };
+      const unlockKeyOpts = { capture: true };
+
+      function ensureAudioCtx() {
+        if (audioCtx) return audioCtx;
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return null;
+        audioCtx = new Ctx();
+        return audioCtx;
+      }
+
+      function unlockAudio() {
+        const ctx = ensureAudioCtx();
+        if (!ctx) return;
+
+        if (ctx.state === "suspended") ctx.resume();
+        audioUnlocked = true;
+
+        window.removeEventListener("pointerdown", unlockAudio, unlockPointerOpts);
+        window.removeEventListener("keydown", unlockAudio, unlockKeyOpts);
+      }
+
+      window.addEventListener("pointerdown", unlockAudio, unlockPointerOpts);
+      window.addEventListener("keydown", unlockAudio, unlockKeyOpts);
+
+      function playFocusStealBeep() {
+        if (!audioUnlocked) return;
+        const ctx = ensureAudioCtx();
+        if (!ctx) return;
+
+        const t0 = ctx.currentTime;
+
+        const o = ctx.createOscillator();
+        const g = ctx.createGain();
+
+        o.type = "sine";
+        o.frequency.setValueAtTime(880, t0);
+
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.12, t0 + 0.01);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
+
+        o.connect(g);
+        g.connect(ctx.destination);
+
+        o.start(t0);
+        o.stop(t0 + 0.14);
+
+        o.onended = () => {
+          try { o.disconnect(); } catch {}
+          try { g.disconnect(); } catch {}
+        };
+      }
+
       function readConfigText() {
         const el = document.getElementById("routine-config");
         return (el && el.textContent) ? el.textContent : "";
@@ -463,17 +630,60 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         return /^([0-2]\d):([0-5]\d)$/.test(String(s || "").trim());
       }
 
-      function isBlockToken(s) {
-        const v = String(s || "").trim().toLowerCase();
-        return v === "none" || v === "weekdays" || v === "weekend";
-      }
-
       function parseFreshStartDelayToken(s) {
         const m = String(s || "").trim().match(/^freshStartDelay\s*=\s*(\d+)\s*$/i);
         if (!m) return null;
         const n = parseInt(m[1], 10);
         if (!Number.isFinite(n) || n < 0) return null;
         return n;
+      }
+
+      const MASK = (dow) => (1 << dow);
+      const WEEKEND_MASK = MASK(0) | MASK(6);
+      const WEEKDAY_MASK = MASK(1) | MASK(2) | MASK(3) | MASK(4) | MASK(5);
+
+      function blockWordToMask(w) {
+        const s = String(w || "").trim().toLowerCase();
+        if (!s) return null;
+
+        if (s === "none") return { reset: true, mask: 0 };
+
+        if (s === "weekday" || s === "weekdays") return { reset: false, mask: WEEKDAY_MASK };
+        if (s === "weekend" || s === "weekends") return { reset: false, mask: WEEKEND_MASK };
+
+        if (s === "sun" || s === "sunday" || s === "sundays") return { reset: false, mask: MASK(0) };
+        if (s === "mon" || s === "monday" || s === "mondays") return { reset: false, mask: MASK(1) };
+        if (s === "tue" || s === "tues" || s === "tuesday" || s === "tuesdays") return { reset: false, mask: MASK(2) };
+        if (s === "wed" || s === "weds" || s === "wednesday" || s === "wednesdays") return { reset: false, mask: MASK(3) };
+        if (s === "thu" || s === "thur" || s === "thurs" || s === "thursday" || s === "thursdays") return { reset: false, mask: MASK(4) };
+        if (s === "fri" || s === "friday" || s === "fridays") return { reset: false, mask: MASK(5) };
+        if (s === "sat" || s === "saturday" || s === "saturdays") return { reset: false, mask: MASK(6) };
+
+        return null;
+      }
+
+      function parseBlockMaskFromToken(tok) {
+        const raw = String(tok || "").trim();
+        if (!raw) return { hadAny: false, reset: false, mask: 0 };
+
+        const pieces = raw.split(/[,\s]+/).map(x => x.trim()).filter(Boolean);
+        let mask = 0;
+        let hadAny = false;
+        let reset = false;
+
+        for (const p of pieces) {
+          const res = blockWordToMask(p);
+          if (!res) continue;
+          hadAny = true;
+          if (res.reset) {
+            reset = true;
+            mask = 0;
+            continue;
+          }
+          mask |= res.mask;
+        }
+
+        return { hadAny, reset, mask };
       }
 
       function parseConfig(text) {
@@ -499,9 +709,9 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
           const subtitle = parts[2] || "";
           const recurring = parts[3] || "1d";
 
-          let block = "none";
           let time = "";
           let freshStartDelay = 0;
+          let blockMask = 0;
 
           for (let i = 4; i < parts.length; i++) {
             const tok = parts[i];
@@ -511,7 +721,13 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
             if (fsd !== null) { freshStartDelay = fsd; continue; }
 
             if (!time && isTimeToken(tok)) { time = tok; continue; }
-            if (isBlockToken(tok)) { block = String(tok).toLowerCase().trim(); continue; }
+
+            const bm = parseBlockMaskFromToken(tok);
+            if (bm.hadAny) {
+              if (bm.reset) blockMask = 0;
+              blockMask |= bm.mask;
+              continue;
+            }
           }
 
           tasks.push({
@@ -519,9 +735,9 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
             nameHtml,
             subtitle,
             recurring,
-            block,
             time,
-            freshStartDelay
+            freshStartDelay,
+            blockMask
           });
         }
 
@@ -538,7 +754,7 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
       }
 
       function taskId(task) {
-        const key = `${task.category}||${task.nameHtml}||${task.subtitle}||${task.recurring}||${task.block}||${task.time || ""}||fsd=${task.freshStartDelay || 0}`;
+        const key = `${task.category}||${task.nameHtml}||${task.subtitle}||${task.recurring}||blockMask=${task.blockMask || 0}||${task.time || ""}||fsd=${task.freshStartDelay || 0}`;
         return "t_" + hashStringToInt(key).toString(36);
       }
 
@@ -598,21 +814,26 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         return t.getTime();
       }
 
+      function normalizeRecurringValue(v) {
+        let x = Number(v);
+        if (!Number.isFinite(x)) return 1;
+        if (x < 1) x = 1;
+
+        const flo = Math.floor(x);
+        const frac = Math.abs(x - flo);
+
+        if (frac < 1e-9) return flo;
+        if (Math.abs(frac - 0.5) < 1e-9) return flo + 0.5;
+        return flo;
+      }
+
       function parseRecurring(recStr) {
         const s = String(recStr || "").trim().toLowerCase();
         const m = s.match(/^(\d+(?:\.\d+)?)\s*([dwmy])$/);
         if (!m) return { value: 1, unit: "d", raw: s || "1d" };
-        return { value: parseFloat(m[1]), unit: m[2], raw: s };
-      }
-
-      function randomizeHalfStep(value) {
-        const frac = Math.abs(value - Math.floor(value));
-        if (Math.abs(frac - 0.5) < 1e-9) {
-          const lo = Math.floor(value);
-          const hi = Math.ceil(value);
-          return (Math.random() < 0.5) ? lo : hi;
-        }
-        return value;
+        const rawVal = parseFloat(m[1]);
+        const unit = m[2];
+        return { value: normalizeRecurringValue(rawVal), unit, raw: s };
       }
 
       function clampDayOfMonth(dateObj, year, monthIndex, day) {
@@ -652,36 +873,78 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         return out.getTime();
       }
 
-      function isBlockedDay(dateObj, block) {
+      function isBlockedDay(dateObj, blockMask) {
+        if (!blockMask) return false;
         const dow = dateObj.getDay();
-        if (block === "weekdays") return dow >= 1 && dow <= 5;
-        if (block === "weekend") return dow === 0 || dow === 6;
-        return false;
+        return (blockMask & (1 << dow)) !== 0;
       }
 
-      function shiftForwardToAllowedDayStart(dueMsAlignedToDayStart, block) {
-        if (block === "none") return dueMsAlignedToDayStart;
-        let ms = dueMsAlignedToDayStart;
-        for (let i = 0; i < 14; i++) {
-          const d = new Date(ms);
-          if (!isBlockedDay(d, block)) return ms;
-          const nd = new Date(ms);
-          nd.setDate(nd.getDate() + 1);
-          ms = nd.getTime();
+      function addDaysMs(ms, days) {
+        const d = new Date(ms);
+        d.setDate(d.getDate() + days);
+        return d.getTime();
+      }
+
+      function shiftForwardToAllowedDayStartForTask(dueDayStartMs, task, dayStartHM) {
+        if (!task.blockMask) return dueDayStartMs;
+
+        let ms = dueDayStartMs;
+        for (let i = 0; i < 60; i++) {
+          if (isBlockedDay(new Date(ms), task.blockMask)) {
+            ms = addDaysMs(ms, 1);
+            continue;
+          }
+
+          if (task.isTimed) {
+            const trig = triggerMsForRoutineDayStart(ms, task.timeMinutes, dayStartHM);
+            if (isBlockedDay(new Date(trig), task.blockMask)) {
+              ms = addDaysMs(ms, 1);
+              continue;
+            }
+          }
+
+          return ms;
         }
-        return dueMsAlignedToDayStart;
+
+        return dueDayStartMs;
       }
 
-      function computeNextDueMs(completedAtMs, dayStartHM, recurring) {
+      function chooseRoundedUpDown(value, taskState, hadBeenCompletedBefore) {
+        const lo = Math.floor(value);
+        const hi = Math.ceil(value);
+
+        const last = String(taskState.lastRoundDir || "").toLowerCase();
+        const hasValidLast = (last === "up" || last === "down");
+
+        let dir;
+        if (!hadBeenCompletedBefore || !hasValidLast) {
+          dir = (Math.random() < 0.5) ? "down" : "up";
+        } else {
+          dir = (last === "up") ? "down" : "up";
+        }
+
+        taskState.lastRoundDir = dir;
+        return (dir === "up") ? hi : lo;
+      }
+
+      function isHalfStep(value) {
+        const flo = Math.floor(value);
+        const frac = Math.abs(value - flo);
+        return Math.abs(frac - 0.5) < 1e-9;
+      }
+
+      function chooseRecurringAmount(recurring, taskState, hadBeenCompletedBefore) {
+        const v = recurring.value;
+        if (!Number.isFinite(v)) return 1;
+        if (v % 1 === 0) return v;
+        if (isHalfStep(v)) return chooseRoundedUpDown(v, taskState, hadBeenCompletedBefore);
+        return Math.floor(v);
+      }
+
+      function computeNextDueMs(completedAtMs, dayStartHM, recurring, taskState, hadBeenCompletedBefore) {
         const completedDayStart = getDayStartMs(completedAtMs, dayStartHM);
-        const { value, unit } = recurring;
-
-        let chosen = randomizeHalfStep(value);
-
-        if ((unit === "m" || unit === "y") && chosen % 1 !== 0) {
-          const approxDays = (unit === "m") ? (chosen * 30.4375) : (chosen * 365.25);
-          return completedDayStart + Math.round(approxDays * 86400000);
-        }
+        const chosen = chooseRecurringAmount(recurring, taskState, hadBeenCompletedBefore);
+        const unit = recurring.unit;
 
         if (unit === "d") return completedDayStart + Math.round(chosen * 86400000);
         if (unit === "w") return completedDayStart + Math.round(chosen * 7 * 86400000);
@@ -716,7 +979,7 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       }
 
-      const catDot = document.getElementById("catDot");
+      const catPill = document.getElementById("catPill");
       const catName = document.getElementById("catName");
       const statusBadge = document.getElementById("statusBadge");
       const taskName = document.getElementById("taskName");
@@ -735,6 +998,52 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
       const resetItem = document.getElementById("resetItem");
       const resetHint = document.getElementById("resetHint");
 
+      const tsOverlay = document.getElementById("tsOverlay");
+      const tsOverlayText = document.getElementById("tsOverlayText");
+      const tsOverlayClose = document.getElementById("tsOverlayClose");
+
+      function formatTimestamp(ms) {
+        const d = new Date(ms);
+        const fmt = new Intl.DateTimeFormat(undefined, {
+          weekday: "long",
+          year: "numeric",
+          month: "long",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit"
+        });
+        return fmt.format(d);
+      }
+
+      function openTimestampOverlay(ms) {
+        if (!ms || !Number.isFinite(ms) || ms <= 0) return;
+        tsOverlayText.textContent = formatTimestamp(ms);
+        tsOverlay.style.display = "flex";
+        tsOverlay.setAttribute("aria-hidden", "false");
+      }
+
+      function closeTimestampOverlay() {
+        tsOverlay.style.display = "none";
+        tsOverlay.setAttribute("aria-hidden", "true");
+      }
+
+      tsOverlayClose.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        closeTimestampOverlay();
+      });
+
+      tsOverlay.addEventListener("click", (e) => {
+        if (e.target === tsOverlay) closeTimestampOverlay();
+      });
+
+      window.addEventListener("keydown", (e) => {
+        if (e.key === "Escape" && tsOverlay.getAttribute("aria-hidden") === "false") {
+          closeTimestampOverlay();
+        }
+      });
+
       const cfg = parseConfig(readConfigText());
       const dayStartHM = parseDayStart(cfg.dayStart);
 
@@ -749,7 +1058,8 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
           recurringParsed: parseRecurring(t.recurring),
           isTimed,
           timeMinutes,
-          freshStartDelay: Number.isFinite(t.freshStartDelay) ? t.freshStartDelay : 0
+          freshStartDelay: Number.isFinite(t.freshStartDelay) ? t.freshStartDelay : 0,
+          blockMask: Number.isFinite(t.blockMask) ? t.blockMask : 0
         };
       });
 
@@ -759,75 +1069,38 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
       });
       const displayIndexById = Object.fromEntries(displayAll.map((t, i) => [t.id, i]));
 
-      const state = loadState();
+      const CATEGORY_PALETTE = [
+        { name: "orange", h: 28 },
+        { name: "green",  h: 145 },
+        { name: "blue",   h: 210 },
+        { name: "purple", h: 270 }
+      ];
 
-      function normalizeHue(h) {
-        let x = h % 360;
-        if (x < 0) x += 360;
-        return x;
-      }
-
-      function hueDistance(a, b) {
-        const d = Math.abs(a - b) % 360;
-        return Math.min(d, 360 - d);
-      }
-
-      function buildCategoryHueMap() {
-        const seq = [];
-        const seen = new Set();
-        for (const t of displayAll) {
-          if (!seen.has(t.category)) {
-            seen.add(t.category);
-            seq.push(t.category);
-          }
-        }
-
-        const GOLDEN = 137.50776405003785;
-        const MIN_ADJ = 70;
-        const MIN_GLOBAL = 28;
-
-        const map = {};
-        const used = [];
-
-        for (let i = 0; i < seq.length; i++) {
-          const cat = seq[i];
-          let h = normalizeHue((hashStringToInt(cat) % 360) + (i * GOLDEN));
-          let tries = 0;
-
-          while (tries < 120) {
-            const prevHue = (i > 0) ? map[seq[i - 1]] : null;
-            const okPrev = (prevHue === null) || (hueDistance(h, prevHue) >= MIN_ADJ);
-            const okGlobal = used.every(u => hueDistance(h, u) >= MIN_GLOBAL);
-            if (okPrev && okGlobal) break;
-            h = normalizeHue(h + GOLDEN);
-            tries++;
-          }
-
-          if (i > 0 && hueDistance(h, map[seq[i - 1]]) < MIN_ADJ) {
-            h = normalizeHue(map[seq[i - 1]] + 180);
-          }
-
-          while (used.some(u => hueDistance(h, u) < 0.0001)) {
-            h = normalizeHue(h + GOLDEN);
-          }
-
-          map[cat] = h;
-          used.push(h);
-        }
-
-        return map;
-      }
-
-      const categoryHueMap = buildCategoryHueMap();
-
-      function categoryColor(category) {
-        const h = (categoryHueMap[category] ?? (hashStringToInt(category) % 360));
+      function pillColorFromIndex(i) {
+        const h = CATEGORY_PALETTE[(i % CATEGORY_PALETTE.length + CATEGORY_PALETTE.length) % CATEGORY_PALETTE.length].h;
         return {
-          dot: `hsl(${h} 95% 62%)`,
           pill: `hsl(${h} 92% 56% / .26)`,
           pillBorder: `hsl(${h} 92% 60% / .34)`
         };
       }
+
+      const taskColorIndexById = (function buildTaskColorIndexMap() {
+        const map = {};
+        let idx = 0;
+        let prevCat = null;
+
+        for (const t of displayAll) {
+          if (prevCat !== null && t.category !== prevCat) {
+            idx = (idx + 1) % CATEGORY_PALETTE.length;
+          }
+          map[t.id] = idx;
+          prevCat = t.category;
+        }
+
+        return map;
+      })();
+
+      const state = loadState();
 
       function ensureTaskState(id) {
         if (!state.byId[id]) state.byId[id] = {};
@@ -836,6 +1109,7 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         if (typeof s.nextDueMs !== "number") s.nextDueMs = 0;
         if (typeof s.skippedDayKey !== "string") s.skippedDayKey = "";
         if (typeof s.lastTimedStealKey !== "string") s.lastTimedStealKey = "";
+        if (typeof s.lastRoundDir !== "string") s.lastRoundDir = "";
         return s;
       }
 
@@ -847,8 +1121,9 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
       function effectiveDueDayStartMs(task, taskState) {
         let due = taskState.nextDueMs;
         if (!due) due = getDayStartMs(Date.now(), dayStartHM);
-        const aligned = getDayStartMs(due + 1000, dayStartHM);
-        return shiftForwardToAllowedDayStart(aligned, task.block);
+        let aligned = getDayStartMs(due + 1000, dayStartHM);
+        aligned = shiftForwardToAllowedDayStartForTask(aligned, task, dayStartHM);
+        return aligned;
       }
 
       function isPending(task, taskState, nowMs) {
@@ -857,7 +1132,7 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         if (!task.isTimed) return nowMs >= dueDayStart;
 
         const triggerMs = triggerMsForRoutineDayStart(dueDayStart, task.timeMinutes, dayStartHM);
-        if (task.block !== "none" && isBlockedDay(new Date(triggerMs), task.block)) return false;
+        if (isBlockedDay(new Date(triggerMs), task.blockMask)) return false;
 
         return nowMs >= triggerMs;
       }
@@ -890,7 +1165,10 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         return idx > 0;
       }
 
+      // Focus-steal grouping + NEW: beep when a steal occurs.
       function applyTimedFocusSteal(nowMs) {
+        const candidates = [];
+
         for (const t of tasks) {
           if (!t.isTimed) continue;
 
@@ -898,16 +1176,34 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
           if (!isPending(t, ts, nowMs)) continue;
 
           const dueDayStart = effectiveDueDayStartMs(t, ts);
-          const occKey = dayKeyFromDayStartMs(dueDayStart);
+          const triggerMs = triggerMsForRoutineDayStart(dueDayStart, t.timeMinutes, dayStartHM);
+          if (isBlockedDay(new Date(triggerMs), t.blockMask)) continue;
 
-          if (ts.lastTimedStealKey !== occKey) {
-            ts.lastTimedStealKey = occKey;
-            state.activeId = t.id;
-            saveState(state);
-            return true;
-          }
+          const stealKey = String(triggerMs);
+          if (ts.lastTimedStealKey === stealKey) continue;
+
+          candidates.push({ t, ts, triggerMs, stealKey });
         }
-        return false;
+
+        if (!candidates.length) return false;
+
+        candidates.sort((a, b) => {
+          if (a.triggerMs !== b.triggerMs) return a.triggerMs - b.triggerMs;
+          return a.t.order - b.t.order;
+        });
+
+        const chosenTriggerMs = candidates[0].triggerMs;
+        const group = candidates.filter(c => c.triggerMs === chosenTriggerMs);
+
+        for (const c of group) {
+          c.ts.lastTimedStealKey = c.stealKey;
+        }
+
+        state.activeId = candidates[0].t.id;
+        saveState(state);
+
+        playFocusStealBeep();
+        return true;
       }
 
       function pickActiveTask(nowMs) {
@@ -931,16 +1227,68 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         return null;
       }
 
+      function setRecurringTapState(lastCompletedMs) {
+        if (!lastCompletedMs || lastCompletedMs <= 0) {
+          recurringLine.classList.remove("tapEnabled");
+          recurringLine.removeAttribute("role");
+          recurringLine.removeAttribute("tabindex");
+          delete recurringLine.dataset.lastCompletedMs;
+          return;
+        }
+
+        recurringLine.classList.add("tapEnabled");
+        recurringLine.setAttribute("role", "button");
+        recurringLine.setAttribute("tabindex", "0");
+        recurringLine.dataset.lastCompletedMs = String(lastCompletedMs);
+      }
+
+      recurringLine.addEventListener("click", () => {
+        const ms = parseInt(recurringLine.dataset.lastCompletedMs || "0", 10);
+        if (!ms) return;
+        openTimestampOverlay(ms);
+      });
+
+      recurringLine.addEventListener("keydown", (e) => {
+        if (e.key !== "Enter" && e.key !== " ") return;
+        const ms = parseInt(recurringLine.dataset.lastCompletedMs || "0", 10);
+        if (!ms) return;
+        e.preventDefault();
+        openTimestampOverlay(ms);
+      });
+
+      function blockDescription(mask) {
+        if (!mask) return "";
+
+        const labels = [];
+        let rem = mask;
+
+        if ((rem & WEEKEND_MASK) === WEEKEND_MASK) {
+          labels.push("weekends");
+          rem &= ~WEEKEND_MASK;
+        }
+
+        if ((rem & WEEKDAY_MASK) === WEEKDAY_MASK) {
+          labels.push("weekdays");
+          rem &= ~WEEKDAY_MASK;
+        }
+
+        const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        for (let dow = 0; dow <= 6; dow++) {
+          if (rem & (1 << dow)) labels.push(dayNames[dow]);
+        }
+
+        if (!labels.length) return "";
+        return `blocked on ${labels.join(", ")}`;
+      }
+
       function renderStatusState(nowMs, kind) {
         const pendCount = pendingTasksUnordered(nowMs).length;
         statusBadge.textContent = `${pendCount} pending`;
 
         catName.textContent = "—";
-        catDot.style.background = "rgba(255,255,255,.35)";
-        const pill = catDot.parentElement;
-        if (pill && pill.classList.contains("pill")) {
-          pill.style.background = "rgba(255,255,255,.06)";
-          pill.style.borderColor = "rgba(255,255,255,.10)";
+        if (catPill) {
+          catPill.style.background = "rgba(255,255,255,.06)";
+          catPill.style.borderColor = "rgba(238,241,255,.10)";
         }
 
         metaArea.style.display = "none";
@@ -948,6 +1296,8 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
 
         btnComplete.style.display = "none";
         btnSkip.style.display = "none";
+
+        setRecurringTapState(0);
 
         if (kind === "all_done") {
           taskName.textContent = "All caught up";
@@ -975,14 +1325,13 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         metaArea.style.display = "flex";
 
         const ts = ensureTaskState(task.id);
-        const catCol = categoryColor(task.category);
 
         catName.textContent = task.category;
-        catDot.style.background = catCol.dot;
-        const pill = catDot.parentElement;
-        if (pill && pill.classList.contains("pill")) {
-          pill.style.background = catCol.pill;
-          pill.style.borderColor = catCol.pillBorder;
+        if (catPill) {
+          const idx = taskColorIndexById[task.id] ?? 0;
+          const col = pillColorFromIndex(idx);
+          catPill.style.background = col.pill;
+          catPill.style.borderColor = col.pillBorder;
         }
 
         const pendCount = pendingTasksUnordered(nowMs).length;
@@ -999,12 +1348,23 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
           subTitle.textContent = "";
         }
 
-        const ago = daysAgoText(ts.lastCompletedMs, nowMs, dayStartHM);
-        recurringLine.textContent = `${task.recurring} (last completed ${ago})`;
+        if (ts.lastCompletedMs && ts.lastCompletedMs > 0) {
+          const ago = daysAgoText(ts.lastCompletedMs, nowMs, dayStartHM);
+          recurringLine.textContent = `${task.recurring} (last completed ${ago})`;
+        } else {
+          recurringLine.textContent = `${task.recurring}`;
+        }
 
-        if (task.block && task.block !== "none") {
-          blockRow.style.display = "flex";
-          blockLine.textContent = (task.block === "weekdays") ? "blocked on weekdays" : "blocked on weekend";
+        setRecurringTapState(ts.lastCompletedMs);
+
+        if (task.blockMask) {
+          const desc = blockDescription(task.blockMask);
+          if (desc) {
+            blockRow.style.display = "flex";
+            blockLine.textContent = desc;
+          } else {
+            blockRow.style.display = "none";
+          }
         } else {
           blockRow.style.display = "none";
         }
@@ -1088,12 +1448,14 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
         const ts = ensureTaskState(t.id);
         const wasSkipped = (ts.skippedDayKey === tk);
 
+        const hadBeenCompletedBefore = (ts.lastCompletedMs && ts.lastCompletedMs > 0);
+
         ts.lastCompletedMs = nowMs;
 
         const rec = t.recurringParsed;
-        let next = computeNextDueMs(nowMs, dayStartHM, rec);
+        let next = computeNextDueMs(nowMs, dayStartHM, rec, ts, hadBeenCompletedBefore);
         next = getDayStartMs(next + 1000, dayStartHM);
-        next = shiftForwardToAllowedDayStart(next, t.block);
+        next = shiftForwardToAllowedDayStartForTask(next, t, dayStartHM);
         ts.nextDueMs = next;
 
         ts.skippedDayKey = "";
@@ -1238,7 +1600,7 @@ Home | Prepare tomorrow | Clothes + bag | 1d | weekend | 21:30 | freshStartDelay
             const delayDays = Number.isFinite(t.freshStartDelay) ? Math.max(0, Math.floor(t.freshStartDelay)) : 0;
             let due = state.freshStartBaseMs + (delayDays * 86400000);
             due = getDayStartMs(due + 1000, dayStartHM);
-            due = shiftForwardToAllowedDayStart(due, t.block);
+            due = shiftForwardToAllowedDayStartForTask(due, t, dayStartHM);
             ts.nextDueMs = due;
           }
         }
