@@ -1315,6 +1315,17 @@ Sleep | Turn <b>OFF LIGHTS</b>/candles, <b>CHARGE PHONE</b>, then <b>SLEEP</b> |
         return `${labels.join(", ")}`;
       }
 
+      function ordinal(n) {
+        const x = Math.floor(Math.abs(Number(n) || 0));
+        const mod100 = x % 100;
+        if (mod100 >= 11 && mod100 <= 13) return `${x}th`;
+        const mod10 = x % 10;
+        if (mod10 === 1) return `${x}st`;
+        if (mod10 === 2) return `${x}nd`;
+        if (mod10 === 3) return `${x}rd`;
+        return `${x}th`;
+      }
+
       function renderStatusState(nowMs, kind) {
         const pendCount = pendingTasksUnordered(nowMs).length;
         statusBadge.textContent = `${pendCount} pending`;
@@ -1368,8 +1379,6 @@ Sleep | Turn <b>OFF LIGHTS</b>/candles, <b>CHARGE PHONE</b>, then <b>SLEEP</b> |
           catPill.style.borderColor = col.pillBorder;
         }
 
-        const pendCount = pendingTasksUnordered(nowMs).length;
-        statusBadge.textContent = `${pendCount} pending`;
 
         const nameHtml = sanitizeBoldOnly(task.nameHtml);
         taskName.innerHTML = task.isTimed && task.time ? `${task.time} ${nameHtml}` : nameHtml;
@@ -1407,6 +1416,12 @@ Sleep | Turn <b>OFF LIGHTS</b>/candles, <b>CHARGE PHONE</b>, then <b>SLEEP</b> |
         const pendOrdered = pendingTasksOrdered(nowMs);
         const orderedCount = pendOrdered.length;
         const idxInPend = pendOrdered.findIndex(t => t.id === task.id);
+        if (idxInPend >= 0 && orderedCount > 0) {
+          statusBadge.textContent = `${ordinal(idxInPend + 1)} of ${orderedCount} pending`;
+        } else {
+          statusBadge.textContent = `${orderedCount} pending`;
+        }
+
         const isLastInPendingOrder = (idxInPend >= 0 && idxInPend === orderedCount - 1);
 
         const showFirst = (idxInPend > 0);
