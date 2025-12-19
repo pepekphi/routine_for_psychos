@@ -72,6 +72,7 @@ dayStart=05:00
 
 # Category | Task name | Sub-title | Recurring | (optional block tokens...) | Time | freshStartDelay=NDAYS
 Room | Open <b>CURTAINS</b>, make <b>BED</b> || 1d
+Pee | <b>PEE</b> | if needed | 1d
 Teeth | Remove <b>RETAINER</b> || 1d
 Teeth | <b>FLOSS</b> teeth || 1d
 Teeth | <b>BRUSH</b> teeth || 1d
@@ -113,13 +114,13 @@ Dinner | Order/go for <b>DINNER</b> || 1d | 19:00
 End Day | Take <b>COUGH INHALER</b> (2x) | Budesonide + Formoterol inhalation powder | 1d | 23:00
 End Day | Drink <b>WATER</b> ≥2L | Daily total. Can take it on pre-bed walk (next). | 1d | 23:00
 End Day | Go for a pre-bed <b>WALK</b> | >10 mins, walk slowly | 1d | 23:00
-End Day | Take <b>SLEEPING</b>, or <b>CALMING PILLS</b>? | Zolpicalm? Melatonin? Mag L-Th, Api, L-Thea. | 1d | 23:00
 End Day | <b>SHOWER</b>, <b>CLEANSE</b> face | or take bath, or wash hands | 1d | 23:00
 Teeth | <b>FLOSS</b> teeth || 1d | 23:00
 Teeth | <b>BRUSH</b> teeth || 1d | 23:00
 Teeth | Wear <b>RETAINER</b> | for teeth | 1d | 23:00
 Skin | <b>MOISTURISE</b> face | La Roche-Posay Toleraine Repairing, or after-sun | 1d | 23:00
 Alarm | Wear <b>ALARM BRACELET</b> | Set alarm for 9 AM | 1d | 23:00
+Pills | Take <b>SLEEPING</b>, or <b>CALMING PILLS</b>? | Zolpicalm? Melatonin? Mag L-Th, Api, L-Thea. | 1d | 23:00
 Sleep | Turn <b>OFF LIGHTS</b>/candles, <b>CHARGE PHONE</b>, then <b>SLEEP</b> | Meditate/binaural beats/breathe. NO TV/PHONE! | 1d | 23:00
   </script>
 
@@ -1170,10 +1171,23 @@ Sleep | Turn <b>OFF LIGHTS</b>/candles, <b>CHARGE PHONE</b>, then <b>SLEEP</b> |
 
       function isPending(task, taskState, nowMs) {
         const dueDayStart = effectiveDueDayStartMs(task, taskState);
+        const nowDayStart = getDayStartMs(nowMs, dayStartHM);
 
-        if (!task.isTimed) return nowMs >= dueDayStart;
+        // NEW:
+        // - Timed tasks that were missed on prior routine-days should NOT appear as pending today
+        //   until their configured time passes on the *current* routine-day.
+        // - Non-timed tasks that are overdue should NOT appear on days that are blocked for that task.
+        if (!task.isTimed) {
+          if (task.blockMask && dueDayStart < nowDayStart && isBlockedDay(new Date(nowDayStart), task.blockMask)) {
+            return false;
+          }
+          return nowMs >= dueDayStart;
+        }
 
-        const triggerMs = triggerMsForRoutineDayStart(dueDayStart, task.timeMinutes, dayStartHM);
+        let triggerDayStart = dueDayStart;
+        if (triggerDayStart < nowDayStart) triggerDayStart = nowDayStart;
+
+        const triggerMs = triggerMsForRoutineDayStart(triggerDayStart, task.timeMinutes, dayStartHM);
         if (isBlockedDay(new Date(triggerMs), task.blockMask)) return false;
 
         return nowMs >= triggerMs;
@@ -1210,7 +1224,12 @@ Sleep | Turn <b>OFF LIGHTS</b>/candles, <b>CHARGE PHONE</b>, then <b>SLEEP</b> |
           if (!isPending(t, ts, nowMs)) continue;
 
           const dueDayStart = effectiveDueDayStartMs(t, ts);
-          const triggerMs = triggerMsForRoutineDayStart(dueDayStart, t.timeMinutes, dayStartHM);
+          const nowDayStart = getDayStartMs(nowMs, dayStartHM);
+
+          let triggerDayStart = dueDayStart;
+          if (triggerDayStart < nowDayStart) triggerDayStart = nowDayStart;
+
+          const triggerMs = triggerMsForRoutineDayStart(triggerDayStart, t.timeMinutes, dayStartHM);
           if (isBlockedDay(new Date(triggerMs), t.blockMask)) continue;
 
           const stealKey = String(triggerMs);
